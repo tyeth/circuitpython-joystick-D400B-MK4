@@ -1,3 +1,5 @@
+import time
+import os
 import board
 import analogio
 import digitalio
@@ -12,17 +14,17 @@ DRIVE_MODE = 0
 MAST_MODE = 1
 
 # Setup joystick axes
-x_axis = analogio.AnalogIn(board.A0)
-y_axis = analogio.AnalogIn(board.A1)
-z_axis = analogio.AnalogIn(board.A2)
+x_axis = analogio.AnalogIn(board.D5)
+y_axis = analogio.AnalogIn(board.D6)
+z_axis = analogio.AnalogIn(board.D9)
 
 # Setup button
-button = digitalio.DigitalInOut(board.D4)
+button = digitalio.DigitalInOut(board.D10)
 button.direction = digitalio.Direction.INPUT
 button.pull = digitalio.Pull.UP
 
 # Setup lights
-lights = digitalio.DigitalInOut(board.D5)
+lights = digitalio.DigitalInOut(board.D13)
 lights.direction = digitalio.Direction.OUTPUT
 
 # Initial state
@@ -36,18 +38,22 @@ button_held_time = 0
 display = None
 text_areas = {}
 
+print("starting")
+
 def init_display():
     """Initialize the display dynamically based on connected hardware."""
     global display, text_areas
 
-    displayio.release_displays()
     if hasattr(board, "DISPLAY"):  # Built-in display
         display = board.DISPLAY
     else:
+        displayio.release_displays()
         i2c = board.I2C()
         display_bus = displayio.I2CDisplay(i2c, device_address=0x3C)
         display = SH1107(display_bus, width=128, height=64)
 
+    print("display:", display)
+    
     # Create the display layout
     main_group = displayio.Group()
     layout = GridLayout(x=0, y=0, width=display.width, height=display.height, grid_size=(1, 3))
@@ -55,11 +61,11 @@ def init_display():
     # Add text labels
     for i, label_text in enumerate(["Mode", "Speed", "Values"]):
         text_area = label.Label(terminalio.FONT, text=f"{label_text}: ---", scale=1)
-        layout.add_content(text_area, grid_position=(0, i))
+        layout.add_content(text_area, grid_position=(0, i), cell_size=(1,1))
         text_areas[label_text] = text_area
 
     main_group.append(layout)
-    display.show(main_group)
+    display.root_group = main_group
 
 def update_display():
     """Update the display with the latest information."""
@@ -73,6 +79,8 @@ def update_display():
 
 def read_axis(axis):
     """Normalize axis value to range -1.0 to 1.0."""
+    print("axis value (-32768) / 32768: \t", axis.value)
+    #TODO: add axis real voltage via esp32 readMilivolts or whatever it's called in circuitpython
     return (axis.value - 32768) / 32768.0
 
 def update_speed():
