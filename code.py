@@ -21,7 +21,7 @@ z_axis = analogio.AnalogIn(board.D9)
 # Setup button
 button = digitalio.DigitalInOut(board.D10)
 button.direction = digitalio.Direction.INPUT
-button.pull = digitalio.Pull.UP
+button.pull = digitalio.Pull.DOWN
 
 # Setup lights
 lights = digitalio.DigitalInOut(board.D13)
@@ -51,8 +51,6 @@ def init_display():
         i2c = board.I2C()
         display_bus = displayio.I2CDisplay(i2c, device_address=0x3C)
         display = SH1107(display_bus, width=128, height=64)
-
-    print("display:", display)
     
     # Create the display layout
     main_group = displayio.Group()
@@ -79,7 +77,6 @@ def update_display():
 
 def read_axis(axis):
     """Normalize axis value to range -1.0 to 1.0."""
-    print("axis value (-32768) / 32768: \t", axis.value)
     #TODO: add axis real voltage via esp32 readMilivolts or whatever it's called in circuitpython
     return (axis.value - 32768) / 32768.0
 
@@ -103,14 +100,16 @@ def toggle_lights():
 # Initialize display
 init_display()
 
+counter=4
 # Main loop
 while True:
+
     # Read joystick axes
     x = read_axis(x_axis) * speed_multiplier
     y = read_axis(y_axis) * speed_multiplier
 
     # Check button state
-    if not button.value:  # Button pressed
+    if button.value:  # Button pressed
         if not button_pressed:
             button_pressed = True
             button_held_time = time.monotonic()
@@ -118,8 +117,8 @@ while True:
         # Check if button is held for more than 1 second
         if time.monotonic() - button_held_time > 1:
             toggle_lights()
-            while not button.value:  # Wait until button is released
-                pass
+            while button.value:  # Wait until button is released
+                pass                 # Move to async 
             button_pressed = False
 
     else:  # Button released
@@ -135,9 +134,16 @@ while True:
 
     # Perform actions based on mode
     if current_mode == DRIVE_MODE:
-        print(f"Driving: X={x:.2f}, Y={y:.2f}, Speed={speed_multiplier:.2f}")
+        print(f"Driving: X={x:.2f}, Y={y:.2f}, Speed={speed_multiplier:.2f}", end="")
     elif current_mode == MAST_MODE:
-        print(f"Mast Control: Tilt={x:.2f}, Height={y:.2f}, Speed={speed_multiplier:.2f}")
+        print(f"Mast Control: Tilt={x:.2f}, Height={y:.2f}, Speed={speed_multiplier:.2f}", end="")
 
+    counter = counter + 1
+    if counter % 8 == 0:
+        print("  button state: ", button.value, "  light state: ", lights_on)
+        counter = 0
+    else:
+        print()
+    
     # Add a small delay for debounce and smooth operation
     time.sleep(0.05)
