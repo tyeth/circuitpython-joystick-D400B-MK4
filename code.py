@@ -8,14 +8,16 @@ import terminalio
 from adafruit_display_text import label
 from adafruit_displayio_layout.layouts.grid_layout import GridLayout
 from adafruit_displayio_sh1107 import SH1107
+import adafruit_imageload
 
 # Constants
 DRIVE_MODE = 0
 MAST_MODE = 1
 
 # Setup joystick axes
-x_axis = analogio.AnalogIn(board.D5)
-y_axis = analogio.AnalogIn(board.D6)
+x_axis = analogio.AnalogIn(board.D6)
+IS_X_INVERTED = True
+y_axis = analogio.AnalogIn(board.D5)
 z_axis = analogio.AnalogIn(board.D9)
 
 # Setup button
@@ -36,13 +38,15 @@ button_held_time = 0
 
 # Display setup
 display = None
+mast_image_tilegrid = None
+drive_image_tilegrid = None
 text_areas = {}
 
 print("starting")
 
 def init_display():
     """Initialize the display dynamically based on connected hardware."""
-    global display, text_areas
+    global display, text_areas, mast_image_tilegrid, drive_image_tilegrid
 
     if hasattr(board, "DISPLAY"):  # Built-in display
         display = board.DISPLAY
@@ -54,11 +58,34 @@ def init_display():
     
     # Create the display layout
     main_group = displayio.Group()
-    layout = GridLayout(x=0, y=0, width=display.width, height=display.height, grid_size=(1, 3))
+    layout = GridLayout(x=0, y=0, width=display.width, height=display.height, grid_size=(4, 3))
+
+    palette = displayio.Palette(2)
+    palette[1] = 0xFFFFFF
+    
+    mast_image, _ = adafruit_imageload.load(
+       "/forklift-mast-140x80.bmp", bitmap=displayio.Bitmap, palette=displayio.Palette
+    )
+    mast_image_tilegrid = displayio.TileGrid(mast_image, pixel_shader=palette, x=-20, y=0)
+
+
+    drive_image, _ = adafruit_imageload.load(
+       "/forklift-drive-140x80.bmp"
+    )
+    drive_image_tilegrid = displayio.TileGrid(drive_image, pixel_shader=palette, x=-20, y=0)
+    drive_image_tilegrid.hidden = False
+    
+    image_group = displayio.Group()
+    # image_group.append(mast_image_tilegrid)
+    # image_group.append(drive_image_tilegrid)
+    layout.add_content(mast_image_tilegrid, grid_position=(2,1), cell_size=(1,1))
+    layout.add_content(drive_image_tilegrid, grid_position=(2,1), cell_size=(1,1))
+    # layout.add_content(mast_image_tilegrid, grid_position=(1,0), cell_size=(1,1))
+    # layout.add_content(drive_image_tilegrid, grid_position=(1,0), cell_size=(1,1))
     
     # Add text labels
     for i, label_text in enumerate(["Mode", "Speed", "Values"]):
-        text_area = label.Label(terminalio.FONT, text=f"{label_text}: ---", scale=1)
+        text_area = label.Label(terminalio.FONT, text=f"{label_text}: ---", scale= 2 if i < 2 else 1)
         layout.add_content(text_area, grid_position=(0, i), cell_size=(1,1))
         text_areas[label_text] = text_area
 
@@ -67,18 +94,25 @@ def init_display():
 
 def update_display():
     """Update the display with the latest information."""
+    global drive_image_tilegrid, mast_image_tilegrid
     mode_text = "Driving" if current_mode == DRIVE_MODE else "Mast"
+    drive_image_tilegrid.hidden = current_mode != DRIVE_MODE
+    mast_image_tilegrid.hidden = current_mode == DRIVE_MODE
     speed_text = f"{speed_multiplier:.2f}"
     values_text = f"X={read_axis(x_axis):.2f}, Y={read_axis(y_axis):.2f}"
 
     text_areas["Mode"].text = f"Mode: {mode_text}"
-    text_areas["Speed"].text = f"Speed: {speed_text}"
-    text_areas["Values"].text = f"Values: {values_text}"
+    text_areas["Speed"].text = f"Speed:\n{speed_text}"
+    text_areas["Values"].text = f"\n\nValues: {values_text}"
 
 def read_axis(axis):
     """Normalize axis value to range -1.0 to 1.0."""
     #TODO: add axis real voltage via esp32 readMilivolts or whatever it's called in circuitpython
-    return (axis.value - 32768) / 32768.0
+    val = axis.value
+    result = (val - 32768) / 32768.0
+    if axis == x_axis:
+        result = -1 * result
+    return result
 
 def update_speed():
     """Update speed multiplier based on twist axis."""
@@ -132,6 +166,7 @@ while True:
     # Update display
     update_display()
 
+    print((x_axis.value, y_axis.value, z_axis.value), end=" ")
     # Perform actions based on mode
     if current_mode == DRIVE_MODE:
         print(f"Driving: X={x:.2f}, Y={y:.2f}, Speed={speed_multiplier:.2f}", end="")
@@ -147,3 +182,5 @@ while True:
     
     # Add a small delay for debounce and smooth operation
     time.sleep(0.05)
+
+
